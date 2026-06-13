@@ -17,3 +17,6 @@ local.properties
 # Project exclude paths
 /app/
 /gradle/
+
+# Lottery analyzer cache
+/scripts/data/
