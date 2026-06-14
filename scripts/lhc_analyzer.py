@@ -48,6 +48,23 @@ LOTTERY_ALIASES: dict[str, str] = {
 }
 ALL_LOTTERY_CODES = list(LOTTERY_TYPES.keys())
 
+DEFAULT_WEIGHTS: dict[str, float] = {
+    "frequency": 0.20,
+    "recent_hot": 0.25,
+    "regular_strength": 0.20,
+    "special_strength": 0.10,
+    "overdue": 0.15,
+    "gap_cycle": 0.10,
+}
+WEIGHT_LABELS: dict[str, str] = {
+    "frequency": "全历史频率",
+    "recent_hot": "近期热度",
+    "regular_strength": "正码强度",
+    "special_strength": "特码强度",
+    "overdue": "遗漏期数",
+    "gap_cycle": "出现周期",
+}
+
 
 @dataclass(frozen=True)
 class DrawRecord:
@@ -529,10 +546,52 @@ def parse_weights(raw: str) -> dict[str, float]:
     for part in raw.split(","):
         key, value = part.split(":")
         weights[key.strip()] = float(value.strip())
+    return normalize_weights(weights)
+
+
+def normalize_weights(weights: dict[str, float]) -> dict[str, float]:
     total = sum(weights.values())
-    if not math.isclose(total, 1.0, rel_tol=1e-6):
-        weights = {k: v / total for k, v in weights.items()}
-    return weights
+    if total <= 0:
+        raise ValueError("权重总和必须大于 0")
+    return {k: v / total for k, v in weights.items()}
+
+
+def format_result_text(result: AnalysisResult) -> str:
+    import io
+    from contextlib import redirect_stdout
+
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        print_result(result)
+    return buffer.getvalue()
+
+
+def run_analysis_for_code(
+    lottery_code: str,
+    weights: dict[str, float],
+    *,
+    limit: int | None = None,
+    recent: int = 30,
+    refresh: bool = False,
+    use_cache: bool = True,
+    top_regular: int = 6,
+    top_special: int = 3,
+    page_size: int = 100,
+    max_pages: int | None = None,
+) -> AnalysisResult:
+    args = argparse.Namespace(
+        api=None,
+        page_size=page_size,
+        max_pages=max_pages,
+        limit=limit,
+        recent=recent,
+        top_regular=top_regular,
+        top_special=top_special,
+        refresh=refresh,
+        cache=use_cache,
+        cache_file=None,
+    )
+    return analyze(lottery_code, args, normalize_weights(weights))
 
 
 def main(argv: list[str] | None = None) -> int:
