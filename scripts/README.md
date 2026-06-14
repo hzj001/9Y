@@ -7,7 +7,7 @@
 | 文件 | 说明 | 平台 |
 |------|------|------|
 | [lhc_analyzer.py](./lhc_analyzer.py) | 命令行分析脚本（核心引擎） | 全平台 |
-| [lhc_gui.py](./lhc_gui.py) | 图形界面（可调权重） | Windows / macOS / Linux |
+| [lhc_gui.py](./lhc_gui.py) | 图形界面（集成全部功能：号码+生肖+权重+导出） | Windows / macOS / Linux |
 | [run_gui.bat](./run_gui.bat) | 双击启动 GUI | Windows |
 | [run_gui.sh](./run_gui.sh) | 终端启动 GUI | macOS / Linux |
 | [run_gui.command](./run_gui.command) | Finder 双击启动 | macOS |

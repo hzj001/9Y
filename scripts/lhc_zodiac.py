@@ -301,6 +301,20 @@ def print_zodiac_analysis(
     print_zodiac_prediction(stats, latest, next_year_index, len(draws))
 
 
+def format_zodiac_report(
+    draws: list[DrawRecord],
+    recent_window: int,
+    weights: dict[str, float],
+) -> str:
+    import io
+    from contextlib import redirect_stdout
+
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        print_zodiac_analysis(draws, recent_window, weights)
+    return buffer.getvalue()
+
+
 def zodiac_analysis_to_dict(
     draws: list[DrawRecord],
     recent_window: int,

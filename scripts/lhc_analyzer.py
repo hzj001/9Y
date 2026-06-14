@@ -475,7 +475,7 @@ def result_to_json(result: AnalysisResult) -> dict:
     return payload
 
 
-def print_result(result: AnalysisResult) -> None:
+def print_result(result: AnalysisResult, *, include_zodiac: bool = True) -> None:
     stats = result.stats
     regular_ranked = rank_numbers(stats, "regular_strength", MAX_NUMBER)
     special_ranked = rank_numbers(stats, "special_strength", MAX_NUMBER)
@@ -507,9 +507,69 @@ def print_result(result: AnalysisResult) -> None:
             "special_strength",
         )
 
-    from lhc_zodiac import print_zodiac_analysis
+    if include_zodiac:
+        from lhc_zodiac import print_zodiac_analysis
 
-    print_zodiac_analysis(result.draws, result.recent_window, result.weights)
+        print_zodiac_analysis(result.draws, result.recent_window, result.weights)
+
+
+def format_number_report(result: AnalysisResult) -> str:
+    import io
+    from contextlib import redirect_stdout
+
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        print_result(result, include_zodiac=False)
+    return buffer.getvalue()
+
+
+def format_summary_report(result: AnalysisResult) -> str:
+    from lhc_zodiac import zodiac_analysis_to_dict
+
+    stats = result.stats
+    recommended_regular = rank_numbers(stats, "regular_strength", result.top_regular)
+    recommended_special = rank_numbers(stats, "special_strength", 1)
+    composite_top = rank_numbers(stats, "composite", 3)
+    latest = result.draws[-1]
+    zodiac = zodiac_analysis_to_dict(result.draws, result.recent_window, result.weights)
+
+    regular_nums = ", ".join(format_number(s.number) for s in recommended_regular)
+    special_num = format_number(recommended_special[0].number)
+    composite_nums = ", ".join(format_number(s.number) for s in composite_top)
+    zodiac_next = "、".join(zodiac["recommended_next"])
+    latest_regular_z = "、".join(zodiac["latest_zodiacs"]["regular"])
+    latest_special_z = zodiac["latest_zodiacs"]["special"]
+
+    lines = [
+        f"【{result.lottery_name}】",
+        f"分析期数: {len(result.draws)} 期 | 近期窗口: {result.recent_window} 期",
+        f"策略权重: {', '.join(f'{WEIGHT_LABELS.get(k, k)}={v:.0%}' for k, v in result.weights.items())}",
+        "",
+        f"最新开奖: 第 {latest.period} 期 ({latest.lottery_date})",
+        "开奖号码: "
+        + ", ".join(format_number(n) for n in latest.regular)
+        + f" + 特码 {format_number(latest.special)}",
+        "",
+        "── 号码推荐 ──",
+        f"推荐正码 Top {result.top_regular}: {regular_nums}",
+        f"推荐特码 Top 1: {special_num}",
+        f"综合 Top 3: {composite_nums}",
+        "",
+        "── 生肖分析 ──",
+        f"农历年: {zodiac['lunar_year_zodiac']}年",
+        f"最新正码生肖: {latest_regular_z}",
+        f"最新特码生肖: {latest_special_z}",
+        f"下一期推荐生肖 Top 5: {zodiac_next}",
+        "",
+        "── 生肖出现比例 Top 5 ──",
+    ]
+    for item in zodiac["ratios"][:5]:
+        lines.append(
+            f"  {item['zodiac']}: 实际 {item['actual_ratio']:.2%} | "
+            f"理论 {item['theoretical_ratio']:.2%} | 出现 {item['hits']} 次"
+        )
+    lines.extend(["", "说明: 以上为历史统计模型输出，不代表真实开奖概率。"])
+    return "\n".join(lines)
 
 
 def build_parser() -> argparse.ArgumentParser:
