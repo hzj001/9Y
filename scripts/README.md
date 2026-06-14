@@ -4,14 +4,18 @@
 
 ## 脚本一览
 
-| 文件 | 说明 |
-|------|------|
-| [lhc_analyzer.py](./lhc_analyzer.py) | 命令行分析脚本（核心引擎） |
-| [lhc_gui.py](./lhc_gui.py) | Windows 图形界面（可调权重） |
-| [run_gui.bat](./run_gui.bat) | 双击启动 GUI |
-| [requirements.txt](./requirements.txt) | Python 依赖 |
+| 文件 | 说明 | 平台 |
+|------|------|------|
+| [lhc_analyzer.py](./lhc_analyzer.py) | 命令行分析脚本（核心引擎） | 全平台 |
+| [lhc_gui.py](./lhc_gui.py) | 图形界面（可调权重） | Windows / macOS / Linux |
+| [run_gui.bat](./run_gui.bat) | 双击启动 GUI | Windows |
+| [run_gui.sh](./run_gui.sh) | 终端启动 GUI | macOS / Linux |
+| [run_gui.command](./run_gui.command) | Finder 双击启动 | macOS |
+| [requirements.txt](./requirements.txt) | Python 依赖 | 全平台 |
 
 ## 快速开始
+
+**Windows**
 
 ```powershell
 cd scripts
@@ -19,15 +23,18 @@ pip install -r requirements.txt
 python lhc_gui.py
 ```
 
+**macOS**
+
+```bash
+cd scripts
+python3 -m pip install -r requirements.txt
+chmod +x run_gui.sh run_gui.command
+./run_gui.sh
+```
+
 ## 详细教程
 
-请阅读 **[使用教程.md](./使用教程.md)**，包含：
-
-- 各脚本用途说明
-- Windows 安装步骤
-- 图形界面与命令行完整用法
-- 策略权重调参指南
-- 常见问题解答
+请阅读 **[使用教程.md](./使用教程.md)**，包含 Windows / macOS 安装步骤、GUI 与 CLI 用法、权重调参及 FAQ。
 
 ## 免责声明
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""六合彩分析工具 — Windows 图形界面。"""
+"""六合彩分析工具 — 跨平台图形界面（Windows / macOS / Linux）。"""
 
 from __future__ import annotations
 
+import sys
 import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
 from lhc_analyzer import (
-    ALL_LOTTERY_CODES,
     DEFAULT_WEIGHTS,
     LOTTERY_TYPES,
     WEIGHT_LABELS,
@@ -17,6 +17,9 @@ from lhc_analyzer import (
     resolve_lottery_code,
     run_analysis_for_code,
 )
+
+IS_MACOS = sys.platform == "darwin"
+IS_WINDOWS = sys.platform == "win32"
 
 LOTTERY_OPTIONS = [
     ("xg6", "香港六合彩"),
@@ -38,22 +41,37 @@ class LhcAnalyzerApp(tk.Tk):
         self._weight_value_labels: dict[str, ttk.Label] = {}
 
         self._setup_style()
+        self._setup_platform()
         self._build_ui()
         self._reset_weights()
 
+    def _setup_platform(self) -> None:
+        if IS_MACOS:
+            self.lift()
+            self.focus_force()
+
     def _setup_style(self) -> None:
+        ui_font, mono_font = self._pick_fonts()
+        self._ui_font = ui_font
+        self._mono_font = mono_font
+
         style = ttk.Style(self)
-        if "vista" in style.theme_names():
+        if IS_MACOS and "aqua" in style.theme_names():
+            style.theme_use("aqua")
+        elif IS_WINDOWS and "vista" in style.theme_names():
             style.theme_use("vista")
         elif "clam" in style.theme_names():
             style.theme_use("clam")
 
-        for name in ("Microsoft YaHei UI", "Microsoft YaHei", "SimHei", "TkDefaultFont"):
-            try:
-                self.option_add("*Font", (name, 10))
-                break
-            except tk.TclError:
-                continue
+        self.option_add("*Font", ui_font)
+
+    @staticmethod
+    def _pick_fonts() -> tuple[tuple[str, int], tuple[str, int]]:
+        if IS_MACOS:
+            return ("PingFang SC", 12), ("Menlo", 11)
+        if IS_WINDOWS:
+            return ("Microsoft YaHei UI", 10), ("Consolas", 10)
+        return ("TkDefaultFont", 10), ("Monospace", 10)
 
     def _build_ui(self) -> None:
         root = ttk.Frame(self, padding=12)
@@ -159,7 +177,7 @@ class LhcAnalyzerApp(tk.Tk):
         self.result_text = scrolledtext.ScrolledText(
             panel,
             wrap=tk.WORD,
-            font=("Consolas", 10),
+            font=self._mono_font,
             state=tk.DISABLED,
         )
         self.result_text.grid(row=0, column=0, sticky="nsew")
