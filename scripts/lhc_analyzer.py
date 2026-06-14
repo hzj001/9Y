@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-香港六合彩（Mark Six）历史数据分析脚本。
+六合彩历史数据分析脚本（香港 / 老澳门 / 新澳门）。
 
 基于历史开奖记录，使用多种统计策略对 1-49 号码打分，
 并输出本期正码 / 特码的推荐排序。
@@ -15,7 +15,6 @@ import argparse
 import json
 import math
 import sys
-from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -27,8 +26,27 @@ MIN_NUMBER = 1
 MAX_NUMBER = 49
 REGULAR_COUNT = 6
 SPECIAL_INDEX = 6
-DEFAULT_API = "https://www.kj1868.cc/openapi/drawLottery/xg6/last.kj"
-DEFAULT_CACHE = Path(__file__).resolve().parent / "data" / "xg6_history.json"
+API_BASE = "https://www.kj1868.cc/openapi/drawLottery/{code}/last.kj"
+DATA_DIR = Path(__file__).resolve().parent / "data"
+
+LOTTERY_TYPES: dict[str, dict[str, str]] = {
+    "xg6": {"name": "香港六合彩", "short": "香港"},
+    "am6": {"name": "老澳门六合彩", "short": "老澳门"},
+    "nam6": {"name": "新澳门六合彩", "short": "新澳门"},
+}
+LOTTERY_ALIASES: dict[str, str] = {
+    "hk": "xg6",
+    "hongkong": "xg6",
+    "香港": "xg6",
+    "am": "am6",
+    "old": "am6",
+    "老澳门": "am6",
+    "澳门": "am6",
+    "nam": "nam6",
+    "new": "nam6",
+    "新澳门": "nam6",
+}
+ALL_LOTTERY_CODES = list(LOTTERY_TYPES.keys())
 
 
 @dataclass(frozen=True)
@@ -69,6 +87,37 @@ class NumberStats:
         return self.last_seen_index
 
 
+@dataclass
+class AnalysisResult:
+    lottery_code: str
+    lottery_name: str
+    draws: list[DrawRecord]
+    stats: dict[int, NumberStats]
+    weights: dict[str, float]
+    recent_window: int
+    top_regular: int
+    top_special: int
+
+
+def resolve_lottery_code(raw: str) -> str | list[str]:
+    key = raw.strip().lower()
+    if key == "all":
+        return ALL_LOTTERY_CODES.copy()
+    code = LOTTERY_ALIASES.get(key, key)
+    if code not in LOTTERY_TYPES:
+        choices = ", ".join([*ALL_LOTTERY_CODES, "all", *LOTTERY_ALIASES.keys()])
+        raise ValueError(f"未知彩种: {raw}，可选: {choices}")
+    return code
+
+
+def default_cache_path(lottery_code: str) -> Path:
+    return DATA_DIR / f"{lottery_code}_history.json"
+
+
+def default_api_url(lottery_code: str) -> str:
+    return API_BASE.format(code=lottery_code)
+
+
 def parse_numbers(raw: str) -> tuple[int, ...]:
     parts = [p.strip() for p in raw.split(",") if p.strip()]
     numbers = tuple(int(p) for p in parts)
@@ -91,7 +140,7 @@ def parse_draw(item: dict) -> DrawRecord:
 
 
 def fetch_history(
-    api_url: str = DEFAULT_API,
+    api_url: str,
     page_size: int = 100,
     max_pages: int | None = None,
     timeout: int = 30,
@@ -121,8 +170,10 @@ def fetch_history(
                 last_error = exc
                 if attempt == retries:
                     raise exc
+
         if resp is None:
             raise RuntimeError(f"第 {page} 页请求失败: {last_error}")
+
         payload = resp.json()
         if payload.get("status") != "10":
             raise RuntimeError(f"API 返回异常: {payload.get('message', payload)}")
@@ -166,11 +217,35 @@ def save_cache(path: Path, draws: list[DrawRecord]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def resolve_draws(
+    lottery_code: str,
+    *,
+    api_url: str | None,
+    cache_path: Path,
+    refresh: bool,
+    use_cache: bool,
+    page_size: int,
+    max_pages: int | None,
+    limit: int | None,
+) -> list[DrawRecord]:
+    if cache_path.exists() and not refresh:
+        draws = load_cache(cache_path)
+        if draws:
+            return draws[-limit:] if limit else draws
+
+    url = api_url or default_api_url(lottery_code)
+    draws = fetch_history(api_url=url, page_size=page_size, max_pages=max_pages)
+    if use_cache or cache_path.exists():
+        save_cache(cache_path, draws)
+    if limit:
+        draws = draws[-limit:]
+    return draws
+
+
 def build_stats(draws: list[DrawRecord], recent_window: int) -> dict[int, NumberStats]:
     stats = {n: NumberStats(number=n) for n in range(MIN_NUMBER, MAX_NUMBER + 1)}
     total = len(draws)
     recent_start = max(0, total - recent_window)
-
     last_seen: dict[int, int | None] = {n: None for n in stats}
 
     for idx, draw in enumerate(draws):
@@ -245,11 +320,7 @@ def score_numbers(
         s.scores["composite"] = sum(weights[k] * norm[k][n] for k in norm)
 
 
-def rank_numbers(
-    stats: dict[int, NumberStats],
-    key: str,
-    top_n: int,
-) -> list[NumberStats]:
+def rank_numbers(stats: dict[int, NumberStats], key: str, top_n: int) -> list[NumberStats]:
     ordered = sorted(stats.values(), key=lambda s: s.scores[key], reverse=True)
     return ordered[:top_n]
 
@@ -321,31 +392,116 @@ def print_strategy_breakdown(stats: dict[int, NumberStats], numbers: Iterable[in
         )
 
 
-def resolve_draws(args: argparse.Namespace) -> list[DrawRecord]:
-    cache_path = Path(args.cache_file)
-    if cache_path.exists() and not args.refresh:
-        draws = load_cache(cache_path)
-        if draws:
-            return draws[-args.limit :] if args.limit else draws
-
-    draws = fetch_history(
+def analyze(
+    lottery_code: str,
+    args: argparse.Namespace,
+    weights: dict[str, float],
+) -> AnalysisResult:
+    cache_path = Path(args.cache_file) if args.cache_file else default_cache_path(lottery_code)
+    draws = resolve_draws(
+        lottery_code,
         api_url=args.api,
+        cache_path=cache_path,
+        refresh=args.refresh,
+        use_cache=args.cache,
         page_size=args.page_size,
         max_pages=args.max_pages,
+        limit=args.limit,
     )
-    if args.cache or cache_path.exists():
-        save_cache(cache_path, draws)
-    if args.limit:
-        draws = draws[-args.limit :]
-    return draws
+    if len(draws) < 10:
+        raise ValueError(f"{LOTTERY_TYPES[lottery_code]['name']} 历史数据不足，至少需要 10 期。")
+
+    stats = build_stats(draws, recent_window=args.recent)
+    score_numbers(stats, total_draws=len(draws), recent_window=args.recent, weights=weights)
+    return AnalysisResult(
+        lottery_code=lottery_code,
+        lottery_name=LOTTERY_TYPES[lottery_code]["name"],
+        draws=draws,
+        stats=stats,
+        weights=weights,
+        recent_window=args.recent,
+        top_regular=args.top_regular,
+        top_special=args.top_special,
+    )
+
+
+def result_to_json(result: AnalysisResult) -> dict:
+    stats = result.stats
+    recommended_regular = rank_numbers(stats, "regular_strength", result.top_regular)
+    recommended_special = rank_numbers(stats, "special_strength", 1)
+    composite_ranked = rank_numbers(stats, "composite", MAX_NUMBER)
+    latest = result.draws[-1]
+
+    return {
+        "lottery_code": result.lottery_code,
+        "lottery_name": result.lottery_name,
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "total_draws": len(result.draws),
+        "latest_period": latest.period,
+        "latest_date": latest.lottery_date,
+        "weights": result.weights,
+        "recommended_regular": [s.number for s in recommended_regular],
+        "recommended_special": recommended_special[0].number,
+        "top_composite": [
+            {
+                "number": s.number,
+                "score": round(s.scores["composite"], 4),
+                "total_hits": s.total_hits,
+                "current_gap": s.current_gap if s.current_gap < 10**6 else None,
+            }
+            for s in composite_ranked[:15]
+        ],
+    }
+
+
+def print_result(result: AnalysisResult) -> None:
+    stats = result.stats
+    regular_ranked = rank_numbers(stats, "regular_strength", MAX_NUMBER)
+    special_ranked = rank_numbers(stats, "special_strength", MAX_NUMBER)
+    composite_ranked = rank_numbers(stats, "composite", MAX_NUMBER)
+    recommended_regular = rank_numbers(stats, "regular_strength", result.top_regular)
+    recommended_special = rank_numbers(stats, "special_strength", 1)
+    latest = result.draws[-1]
+
+    print()
+    print("#" * 60)
+    print(f"# {result.lottery_name}（{result.lottery_code}）")
+    print("#" * 60)
+    print(f"分析期数: {len(result.draws)} 期 | 近期窗口: {result.recent_window} 期")
+    print(f"策略权重: {', '.join(f'{k}={v:.2f}' for k, v in result.weights.items())}")
+    print("说明: 以下为历史统计模型输出，不代表真实开奖概率。")
+
+    print_recommendation(recommended_regular, recommended_special, latest)
+    print_strategy_breakdown(
+        stats,
+        [s.number for s in recommended_regular] + [recommended_special[0].number],
+    )
+    print_ranking("正码强度 Top 15", regular_ranked[:15], "regular_strength")
+    print_ranking("特码强度 Top 15", special_ranked[:15], "special_strength")
+    print_ranking("综合得分 Top 15", composite_ranked[:15], "composite")
+    if result.top_special > 1:
+        print_ranking(
+            f"特码推荐 Top {result.top_special}",
+            special_ranked[: result.top_special],
+            "special_strength",
+        )
 
 
 def build_parser() -> argparse.ArgumentParser:
+    lottery_help = ", ".join(
+        f"{code}={info['name']}" for code, info in LOTTERY_TYPES.items()
+    )
     parser = argparse.ArgumentParser(
-        description="香港六合彩历史数据分析 — 基于多策略统计给出推荐号码",
+        description="六合彩历史数据分析 — 支持香港 / 老澳门 / 新澳门",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--api", default=DEFAULT_API, help="历史开奖 API 地址")
+    parser.add_argument(
+        "--type",
+        "-t",
+        default="xg6",
+        help=f"彩种代码，可用 all 分析全部。可选: {lottery_help}；别名: 香港/老澳门/新澳门",
+    )
+    parser.add_argument("--api", default=None, help="自定义 API 地址（覆盖默认彩种 API）")
     parser.add_argument("--page-size", type=int, default=100, help="每页抓取条数")
     parser.add_argument("--max-pages", type=int, default=None, help="最多抓取页数")
     parser.add_argument("--limit", type=int, default=None, help="只使用最近 N 期数据")
@@ -356,8 +512,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache", action="store_true", help="拉取后将历史数据写入本地缓存")
     parser.add_argument(
         "--cache-file",
-        default=str(DEFAULT_CACHE),
-        help="本地缓存文件路径（存在时优先读取）",
+        default=None,
+        help="本地缓存文件路径（默认: data/{彩种代码}_history.json）",
     )
     parser.add_argument("--json", action="store_true", help="以 JSON 格式输出结果")
     parser.add_argument(
@@ -385,65 +541,59 @@ def main(argv: list[str] | None = None) -> int:
     weights = parse_weights(args.weights)
 
     try:
-        draws = resolve_draws(args)
-    except requests.RequestException as exc:
-        print(f"网络请求失败: {exc}", file=sys.stderr)
-        return 1
-    except (RuntimeError, ValueError, KeyError) as exc:
-        print(f"数据解析失败: {exc}", file=sys.stderr)
+        lottery_codes = resolve_lottery_code(args.type)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
 
-    if len(draws) < 10:
-        print("历史数据不足，至少需要 10 期。", file=sys.stderr)
+    if isinstance(lottery_codes, str):
+        lottery_codes = [lottery_codes]
+
+    if args.cache_file and len(lottery_codes) > 1:
+        print("同时分析多个彩种时请勿指定 --cache-file，将自动按彩种分别缓存。", file=sys.stderr)
         return 1
 
-    stats = build_stats(draws, recent_window=args.recent)
-    score_numbers(stats, total_draws=len(draws), recent_window=args.recent, weights=weights)
+    results: list[AnalysisResult] = []
+    for code in lottery_codes:
+        per_args = argparse.Namespace(**vars(args))
+        if not args.cache_file:
+            per_args.cache_file = None
+        try:
+            results.append(analyze(code, per_args, weights))
+        except requests.RequestException as exc:
+            name = LOTTERY_TYPES[code]["name"]
+            print(f"[{name}] 网络请求失败: {exc}", file=sys.stderr)
+            if len(lottery_codes) == 1:
+                return 1
+        except (RuntimeError, ValueError, KeyError) as exc:
+            name = LOTTERY_TYPES[code]["name"]
+            print(f"[{name}] 数据解析失败: {exc}", file=sys.stderr)
+            if len(lottery_codes) == 1:
+                return 1
 
-    regular_ranked = rank_numbers(stats, "regular_strength", MAX_NUMBER)
-    special_ranked = rank_numbers(stats, "special_strength", MAX_NUMBER)
-    composite_ranked = rank_numbers(stats, "composite", MAX_NUMBER)
-
-    recommended_regular = rank_numbers(stats, "regular_strength", args.top_regular)
-    recommended_special = rank_numbers(stats, "special_strength", 1)
-    latest = draws[-1] if draws else None
+    if not results:
+        print("所有彩种分析均失败。", file=sys.stderr)
+        return 1
 
     if args.json:
-        output = {
-            "generated_at": datetime.now().isoformat(timespec="seconds"),
-            "total_draws": len(draws),
-            "latest_period": latest.period if latest else None,
-            "weights": weights,
-            "recommended_regular": [s.number for s in recommended_regular],
-            "recommended_special": recommended_special[0].number,
-            "top_composite": [
-                {
-                    "number": s.number,
-                    "score": round(s.scores["composite"], 4),
-                    "total_hits": s.total_hits,
-                    "current_gap": s.current_gap if s.current_gap < 10**6 else None,
-                }
-                for s in composite_ranked[:15]
-            ],
-        }
-        print(json.dumps(output, ensure_ascii=False, indent=2))
+        if len(results) == 1:
+            print(json.dumps(result_to_json(results[0]), ensure_ascii=False, indent=2))
+        else:
+            print(
+                json.dumps(
+                    {r.lottery_code: result_to_json(r) for r in results},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
         return 0
 
-    print("香港六合彩分析结果")
-    print(f"分析期数: {len(draws)} 期 | 近期窗口: {args.recent} 期")
-    print(f"策略权重: {', '.join(f'{k}={v:.2f}' for k, v in weights.items())}")
-    print("说明: 以下为历史统计模型输出，不代表真实开奖概率。")
+    if len(results) > 1:
+        print("六合彩综合分析结果（香港 / 老澳门 / 新澳门）")
+        print(f"策略权重: {', '.join(f'{k}={v:.2f}' for k, v in weights.items())}")
 
-    print_recommendation(recommended_regular, recommended_special, latest)
-    print_strategy_breakdown(
-        stats,
-        [s.number for s in recommended_regular] + [recommended_special[0].number],
-    )
-    print_ranking("正码强度 Top 15", regular_ranked[:15], "regular_strength")
-    print_ranking("特码强度 Top 15", special_ranked[:15], "special_strength")
-    print_ranking("综合得分 Top 15", composite_ranked[:15], "composite")
-    if args.top_special > 1:
-        print_ranking(f"特码推荐 Top {args.top_special}", special_ranked[: args.top_special], "special_strength")
+    for result in results:
+        print_result(result)
 
     return 0
 
