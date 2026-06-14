@@ -523,6 +523,63 @@ def format_number_report(result: AnalysisResult) -> str:
     return buffer.getvalue()
 
 
+def format_regular_report(result: AnalysisResult) -> str:
+    import io
+    from contextlib import redirect_stdout
+
+    stats = result.stats
+    regular_ranked = rank_numbers(stats, "regular_strength", MAX_NUMBER)
+    recommended = rank_numbers(stats, "regular_strength", result.top_regular)
+    latest = result.draws[-1]
+
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        print()
+        print("#" * 60)
+        print(f"# {result.lottery_name} — 正码分析")
+        print("#" * 60)
+        print(f"分析期数: {len(result.draws)} 期 | 近期窗口: {result.recent_window} 期")
+        if latest:
+            print(f"最新一期: 第 {latest.period} 期 ({latest.lottery_date})")
+            print("正码开奖: " + ", ".join(format_number(n) for n in latest.regular))
+        regular_nums = sorted(s.number for s in recommended)
+        print()
+        print(f"★ 推荐正码 Top {len(regular_nums)}: " + ", ".join(format_number(n) for n in regular_nums))
+        print_strategy_breakdown(stats, regular_nums)
+        print_ranking("正码强度 Top 15", regular_ranked[:15], "regular_strength")
+        print_ranking("综合得分 Top 15（参考）", rank_numbers(stats, "composite", MAX_NUMBER)[:15], "composite")
+    return buffer.getvalue()
+
+
+def format_special_report(result: AnalysisResult) -> str:
+    import io
+    from contextlib import redirect_stdout
+
+    stats = result.stats
+    special_ranked = rank_numbers(stats, "special_strength", MAX_NUMBER)
+    recommended = rank_numbers(stats, "special_strength", 1)
+    top_special = rank_numbers(stats, "special_strength", result.top_special)
+    latest = result.draws[-1]
+
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        print()
+        print("#" * 60)
+        print(f"# {result.lottery_name} — 特码分析")
+        print("#" * 60)
+        print(f"分析期数: {len(result.draws)} 期 | 近期窗口: {result.recent_window} 期")
+        if latest:
+            print(f"最新一期: 第 {latest.period} 期 ({latest.lottery_date})")
+            print(f"特码开奖: {format_number(latest.special)}")
+        print()
+        print(f"★ 推荐特码 Top 1: {format_number(recommended[0].number)}")
+        print_strategy_breakdown(stats, [recommended[0].number])
+        print_ranking("特码强度 Top 15", special_ranked[:15], "special_strength")
+        if result.top_special > 1:
+            print_ranking(f"特码推荐 Top {result.top_special}", top_special, "special_strength")
+    return buffer.getvalue()
+
+
 def format_summary_report(result: AnalysisResult) -> str:
     from lhc_zodiac import zodiac_analysis_to_dict
 
