@@ -449,7 +449,7 @@ def result_to_json(result: AnalysisResult) -> dict:
     composite_ranked = rank_numbers(stats, "composite", MAX_NUMBER)
     latest = result.draws[-1]
 
-    return {
+    payload = {
         "lottery_code": result.lottery_code,
         "lottery_name": result.lottery_name,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -469,6 +469,10 @@ def result_to_json(result: AnalysisResult) -> dict:
             for s in composite_ranked[:15]
         ],
     }
+    from lhc_zodiac import zodiac_analysis_to_dict
+
+    payload["zodiac"] = zodiac_analysis_to_dict(result.draws, result.recent_window, result.weights)
+    return payload
 
 
 def print_result(result: AnalysisResult) -> None:
@@ -502,6 +506,10 @@ def print_result(result: AnalysisResult) -> None:
             special_ranked[: result.top_special],
             "special_strength",
         )
+
+    from lhc_zodiac import print_zodiac_analysis
+
+    print_zodiac_analysis(result.draws, result.recent_window, result.weights)
 
 
 def build_parser() -> argparse.ArgumentParser:

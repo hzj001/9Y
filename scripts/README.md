@@ -11,7 +11,7 @@
 | [run_gui.bat](./run_gui.bat) | 双击启动 GUI | Windows |
 | [run_gui.sh](./run_gui.sh) | 终端启动 GUI | macOS / Linux |
 | [run_gui.command](./run_gui.command) | Finder 双击启动 | macOS |
-| [requirements.txt](./requirements.txt) | Python 依赖 | 全平台 |
+| [lhc_zodiac.py](./lhc_zodiac.py) | 生肖映射与统计分析（自动集成） | 全平台 |
 
 ## 快速开始
 
