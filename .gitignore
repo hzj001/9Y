@@ -20,3 +20,10 @@ local.properties
 
 # Lottery analyzer cache
 /scripts/data/
+
+# Cursor quota proxy
+cursor-quota-proxy/.env
+cursor-quota-proxy/quota.db
+cursor-quota-proxy/test.db
+cursor-quota-proxy/.venv/
+cursor-quota-proxy/__pycache__/
