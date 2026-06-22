@@ -16,12 +16,12 @@ book_name: "流星帝国"
 # 本脚本通过“新建章节”按钮创建新章，不使用固定章节链接，book_id 留空即可。
 book_id: ""
 
-# 章节 Markdown 目录（相对仓库根目录）。本书章节都在 novel/ 下。
-chapters_dir: "novel"
+# 章节 Markdown 目录（相对仓库根目录）。
+chapters_dir: "novels/流星帝国之大隋兴亡三十七年/chapters"
 
-# 章节文件名通配符。本书章节命名形如：第01章_开场白一个王朝的体检报告.md
-# （番外/附录标题不是“第N章”格式，默认不在自动发布范围内，可手工发布。）
-chapter_glob: "第*章*.md"
+# 章节文件名通配符。本书章节命名 chapter_01.md ... chapter_33.md（与其它小说一致）。
+# （番外/附录在 ../番外与附录/ 下，标题不是“第N章”格式，默认不在自动发布范围内，可手工发布。）
+chapter_glob: "chapter_*.md"
 
 # 登录状态文件（运行 login.py 后生成，勿提交到 Git）
 state_file: "scripts/fanqie_publish/state.json"
