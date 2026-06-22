@@ -404,12 +404,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true", help="只打印计划，不启动浏览器")
     p.add_argument("--no-headless", action="store_true", default=True, help="显示浏览器（默认开启）")
     p.add_argument("--delay", type=int, default=None, help="章间间隔秒数")
+    p.add_argument(
+        "--config",
+        default=None,
+        help="指定配置文件（用于发布不同小说，如 config.liuxing.yaml）；缺省读取 config.yaml",
+    )
     return p
 
 
 def main() -> None:
     args = build_arg_parser().parse_args()
-    cfg = load_config()
+    cfg = load_config(args.config)
     mode = args.mode or cfg.get("default_mode", "draft")
     delay = args.delay if args.delay is not None else cfg.get("delay_between_chapters", 8)
 

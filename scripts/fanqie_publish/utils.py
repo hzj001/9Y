@@ -15,9 +15,21 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 
-def load_config() -> dict[str, Any]:
-    cfg_path = SCRIPT_DIR / "config.yaml"
-    with open(cfg_path, encoding="utf-8") as f:
+def load_config(config_path: str | None = None) -> dict[str, Any]:
+    """加载配置。
+
+    config_path 为空时默认读取脚本目录下的 config.yaml；
+    也可传入相对仓库根目录或绝对路径的其它配置文件（用于多部小说分别配置）。
+    """
+    if config_path:
+        p = Path(config_path)
+        if not p.is_absolute():
+            # 优先按“相对脚本目录”找，找不到再按“相对仓库根目录”
+            cand = SCRIPT_DIR / config_path
+            p = cand if cand.exists() else (ROOT / config_path)
+    else:
+        p = SCRIPT_DIR / "config.yaml"
+    with open(p, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     return cfg
 
@@ -65,7 +77,9 @@ def save_published_log(cfg: dict[str, Any], published: set[int]) -> None:
 
 def list_chapter_files(cfg: dict[str, Any]) -> list[Path]:
     d = chapters_path(cfg)
-    files = sorted(d.glob("chapter_*.md"))
+    # chapter_glob 可在 config.yaml 中自定义；默认兼容老的 chapter_XX.md 命名。
+    pattern = cfg.get("chapter_glob", "chapter_*.md")
+    files = sorted(d.glob(pattern))
     return files
 
 
@@ -76,8 +90,8 @@ def parse_chapter_file(path: Path) -> tuple[int, str, str]:
     if not lines:
         raise ValueError(f"空文件: {path}")
 
-    # 优先从文件名 chapter_64.md 解析序号
-    file_m = re.search(r"chapter_(\d+)", path.stem, re.I)
+    # 优先从文件名解析序号：兼容 chapter_64.md 与 第01章_xxx.md 两种命名
+    file_m = re.search(r"chapter_(\d+)", path.stem, re.I) or re.search(r"第(\d+)章", path.stem)
     chapter_num = int(file_m.group(1)) if file_m else 0
 
     title_line = lines[0].strip()

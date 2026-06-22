@@ -1,0 +1,42 @@
+# 番茄小说自动发布配置 ——《流星帝国：大隋兴亡三十七年》
+#
+# 用法（在仓库根目录）：
+#   python scripts/fanqie_publish/publish.py --config config.liuxing.yaml --dry-run
+#   python scripts/fanqie_publish/publish.py --config config.liuxing.yaml --start 1 --end 1 --mode draft
+#
+# 注意：本配置与默认的 config.yaml 互不影响，方便多部小说分别发布。
+
+# 作家信息
+writer_id: "7650920070733892670"
+
+# ⚠️ 必须与你在番茄作家后台“创建作品”时填写的书名【完全一致】（创建后回来修改这里）。
+#    脚本通过“章节管理页 -> 新建章节”发布，章节管理页 URL 用到了书名。
+book_name: "流星帝国"
+
+# 本脚本通过“新建章节”按钮创建新章，不使用固定章节链接，book_id 留空即可。
+book_id: ""
+
+# 章节 Markdown 目录（相对仓库根目录）。本书章节都在 novel/ 下。
+chapters_dir: "novel"
+
+# 章节文件名通配符。本书章节命名形如：第01章_开场白一个王朝的体检报告.md
+# （番外/附录标题不是“第N章”格式，默认不在自动发布范围内，可手工发布。）
+chapter_glob: "第*章*.md"
+
+# 登录状态文件（运行 login.py 后生成，勿提交到 Git）
+state_file: "scripts/fanqie_publish/state.json"
+
+# 已发布记录（本书单独一份，避免和其它小说冲突）
+published_log: "scripts/fanqie_publish/published_log_liuxing.json"
+
+# 每章发布间隔（秒），避免过快触发风控
+delay_between_chapters: 10
+
+# 正文字数同步等待超时（秒）
+word_count_timeout: 20
+
+# 连续失败多少章后自动停止（疑似限流）
+stop_after_consecutive_failures: 3
+
+# 默认模式: draft=只存草稿, publish=尝试正式发布
+default_mode: "draft"
