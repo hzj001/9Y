@@ -1,0 +1,19 @@
+# 构建镜像时排除这些，减小上下文体积、避免把本地环境带进镜像
+venv/
+__pycache__/
+*.pyc
+
+# 运行产物与个人数据
+downloads/
+*.download_archive.txt
+links.txt
+cookies.txt
+*.json
+
+# 版本控制与文档
+.git/
+.gitignore
+README.md
+
+# PHP 等价实现，与 Docker 镜像无关
+fetch_recent.php

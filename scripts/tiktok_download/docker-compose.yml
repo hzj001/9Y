@@ -1,0 +1,54 @@
+# 用 docker compose 运行，省去手敲一长串挂载参数。
+# 这是 CLI 工具而非常驻服务，因此用 `docker compose run` 触发，而非 `up`。
+#
+# 构建镜像：
+#   docker compose build
+# 下载某用户主页最近 20 个视频：
+#   docker compose run --rm tiktok downloader.py "https://www.tiktok.com/@用户名" --max 20
+# 获取近 2 天视频信息（不下载）：
+#   docker compose run --rm tiktok fetch_recent.py "https://www.tiktok.com/@用户名" --days 2
+#
+# 起 HTTP 接口（常驻服务，给前端调用）：
+#   docker compose up -d api          # 后台启动，监听宿主机 8000 端口
+#   访问交互式文档：http://<服务器>:8000/docs
+#
+# 老版本（CentOS 7 常见）请把 `docker compose` 换成 `docker-compose`。
+# version 字段为兼容旧版 docker-compose v1 而保留，新版会忽略它。
+
+version: "3.8"
+
+services:
+  tiktok:
+    build: .
+    image: tiktok-crawler
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      # 下载产物持久化到宿主机当前目录的 downloads/
+      - ./downloads:/app/downloads
+      # 以下两个为可选挂载：使用前必须先在宿主机创建对应文件，
+      # 否则 Docker 会把不存在的路径当成目录挂载，导致脚本读取失败。
+      #   touch links.txt cookies.txt
+      # 然后取消下面两行注释即可（分别配合 -f links.txt / --cookies cookies.txt 使用）。
+      # - ./links.txt:/app/links.txt:ro
+      # - ./cookies.txt:/app/cookies.txt:ro
+
+  # 常驻 HTTP 接口服务（FastAPI），给前端调用
+  api:
+    build: .
+    image: tiktok-crawler
+    command: ["api.py"]
+    ports:
+      - "8000:8000"
+    environment:
+      - TZ=Asia/Shanghai
+      # 生产建议把 * 改成前端实际域名，如 https://your-frontend.com
+      - CORS_ORIGINS=*
+      # 接口鉴权密钥（强烈建议设置）：调用方需在请求头带 X-API-Key。
+      # 可用 ${API_KEY} 从宿主机环境变量注入，避免把密钥写死进文件。
+      - API_KEY=${API_KEY:-}
+      # 如需登录态，取消下面挂载与此变量（并先创建 cookies.txt）
+      # - TIKTOK_COOKIES=/app/cookies.txt
+    # volumes:
+    #   - ./cookies.txt:/app/cookies.txt:ro
+    restart: unless-stopped

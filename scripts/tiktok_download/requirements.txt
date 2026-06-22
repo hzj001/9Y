@@ -1,1 +1,5 @@
 yt-dlp>=2024.1.0
+
+# HTTP 接口（api.py）依赖；只用命令行下载/爬取时可不装
+fastapi>=0.110
+uvicorn[standard]>=0.29

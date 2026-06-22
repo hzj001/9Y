@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -67,8 +69,14 @@ def get_recent_videos(
     days: int = 2,
     from_browser: str | None = None,
     cookies: Path | None = None,
+    sleep_min: float = 0.0,
+    sleep_max: float = 0.0,
 ) -> list[dict[str, Any]]:
-    """返回近 N 天的视频信息列表，元素为 {id, url, timestamp, datetime}。"""
+    """返回近 N 天的视频信息列表，元素为 {id, url, timestamp, datetime}。
+
+    sleep_min/sleep_max：每次「逐个视频取时间戳」的网络请求之间随机停顿的秒数区间，
+    用于降低被风控的概率（定时批量场景建议开启）。
+    """
     opts = _base_opts(from_browser, cookies)
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     cutoff_ts = cutoff.timestamp()
@@ -95,6 +103,9 @@ def get_recent_videos(
         ts = entry.get("timestamp")
         if ts is None:
             ts = video_timestamp(url, opts)
+            # 只有真正发起了网络请求才随机停顿
+            if sleep_max > 0:
+                time.sleep(random.uniform(max(0.0, sleep_min), max(sleep_min, sleep_max)))
         if ts is None:
             # 拿不到时间就跳过（保守处理，不计入结果）
             continue
@@ -152,6 +163,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="读取本地浏览器登录态：chrome/edge/firefox/brave/... (Chrome 在 Win 上可能因加密失败，建议 firefox)",
     )
     parser.add_argument("--cookies", type=Path, default=None, help="cookies.txt 文件路径")
+    parser.add_argument(
+        "--sleep-min",
+        type=float,
+        default=2.0,
+        help="逐个取视频时间戳的请求之间最小随机停顿秒数（默认 2，设 0 关闭）",
+    )
+    parser.add_argument(
+        "--sleep-max",
+        type=float,
+        default=6.0,
+        help="逐个取视频时间戳的请求之间最大随机停顿秒数（默认 6）",
+    )
     return parser.parse_args(argv)
 
 
@@ -166,6 +189,8 @@ def main(argv: list[str] | None = None) -> int:
         days=days,
         from_browser=args.from_browser,
         cookies=args.cookies,
+        sleep_min=args.sleep_min,
+        sleep_max=args.sleep_max,
     )
 
     output_json = json.dumps(videos, ensure_ascii=False, indent=2)

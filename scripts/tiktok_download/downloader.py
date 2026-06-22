@@ -43,6 +43,24 @@ def read_links_from_file(path: Path) -> list[str]:
     return links
 
 
+def _parse_rate(text: str | None) -> int | None:
+    """把 '2M' / '500K' / '1048576' 这类限速值解析为字节/秒。"""
+    if not text:
+        return None
+    t = text.strip().upper()
+    mult = 1
+    if t.endswith("K"):
+        mult, t = 1024, t[:-1]
+    elif t.endswith("M"):
+        mult, t = 1024 * 1024, t[:-1]
+    elif t.endswith("G"):
+        mult, t = 1024 ** 3, t[:-1]
+    try:
+        return int(float(t) * mult)
+    except ValueError:
+        return None
+
+
 def build_ydl_opts(
     output_dir: Path,
     max_videos: int | None,
@@ -50,6 +68,11 @@ def build_ydl_opts(
     from_browser: str | None,
     audio_only: bool,
     quiet: bool,
+    sleep_min: float = 0.0,
+    sleep_max: float = 0.0,
+    sleep_requests: float = 0.0,
+    limit_rate: str | None = None,
+    concurrency: int = 2,
 ) -> dict:
     """构造 yt-dlp 配置。"""
     # 按 上传者/创建时间_视频ID 组织文件，避免重名覆盖
@@ -67,7 +90,7 @@ def build_ydl_opts(
         "ignoreerrors": True,
         "retries": 5,
         "fragment_retries": 5,
-        "concurrent_fragment_downloads": 4,
+        "concurrent_fragment_downloads": max(1, concurrency),
         "writethumbnail": True,
         "writeinfojson": True,
         "quiet": quiet,
@@ -101,6 +124,18 @@ def build_ydl_opts(
     if from_browser is not None:
         opts["cookiesfrombrowser"] = (from_browser.lower(),)
 
+    # 限速 / 随机延迟：降低被风控（限流/封禁）的概率，定时批量场景强烈建议开启
+    if sleep_min or sleep_max:
+        lo = max(0.0, sleep_min)
+        hi = max(lo, sleep_max)
+        opts["sleep_interval"] = lo
+        opts["max_sleep_interval"] = hi
+    if sleep_requests:
+        opts["sleep_interval_requests"] = sleep_requests
+    rate = _parse_rate(limit_rate)
+    if rate:
+        opts["ratelimit"] = rate
+
     return opts
 
 
@@ -112,10 +147,27 @@ def download(
     from_browser: str | None = None,
     audio_only: bool = False,
     quiet: bool = False,
+    sleep_min: float = 0.0,
+    sleep_max: float = 0.0,
+    sleep_requests: float = 0.0,
+    limit_rate: str | None = None,
+    concurrency: int = 2,
 ) -> int:
     """执行下载，返回失败数量。"""
     output_dir.mkdir(parents=True, exist_ok=True)
-    opts = build_ydl_opts(output_dir, max_videos, cookies, from_browser, audio_only, quiet)
+    opts = build_ydl_opts(
+        output_dir,
+        max_videos,
+        cookies,
+        from_browser,
+        audio_only,
+        quiet,
+        sleep_min=sleep_min,
+        sleep_max=sleep_max,
+        sleep_requests=sleep_requests,
+        limit_rate=limit_rate,
+        concurrency=concurrency,
+    )
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         ret = ydl.download(urls)
@@ -176,6 +228,38 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="安静模式，减少输出",
     )
+    # 限速 / 防风控相关（定时批量爬取时强烈建议保持开启）
+    parser.add_argument(
+        "--sleep-min",
+        type=float,
+        default=3.0,
+        help="每个视频之间的最小随机停顿秒数（默认 3，设 0 关闭）",
+    )
+    parser.add_argument(
+        "--sleep-max",
+        type=float,
+        default=8.0,
+        help="每个视频之间的最大随机停顿秒数（默认 8）",
+    )
+    parser.add_argument(
+        "--sleep-requests",
+        type=float,
+        default=0.0,
+        help="每次网络请求之间的停顿秒数（默认 0，需要更保守可设 1~2）",
+    )
+    parser.add_argument(
+        "--limit-rate",
+        type=str,
+        default=None,
+        metavar="RATE",
+        help="限制下载速率，如 2M / 500K（默认不限速）",
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=2,
+        help="分片并发下载数（默认 2，越低越不易被风控）",
+    )
     return parser.parse_args(argv)
 
 
@@ -203,6 +287,11 @@ def main(argv: list[str] | None = None) -> int:
         from_browser=args.from_browser,
         audio_only=args.audio_only,
         quiet=args.quiet,
+        sleep_min=args.sleep_min,
+        sleep_max=args.sleep_max,
+        sleep_requests=args.sleep_requests,
+        limit_rate=args.limit_rate,
+        concurrency=args.concurrency,
     )
 
     if failed:
