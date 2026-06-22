@@ -1,0 +1,18 @@
+services:
+  tiktok-fetcher:
+    build: .
+    image: tiktok-fetcher:latest
+    container_name: tiktok-fetcher
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8000"
+    volumes:
+      # 下载产物持久化到宿主机
+      - ./downloads:/app/downloads
+      # 如需登录：先在宿主机准备好 cookies.txt，取消下面一行注释，
+      # 请求时传 "cookies": "/app/cookies.txt"。
+      # （注意：若该文件不存在，Docker 会误建成目录，所以默认注释掉）
+      # - ./cookies.txt:/app/cookies.txt:ro

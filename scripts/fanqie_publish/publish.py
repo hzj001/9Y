@@ -33,73 +33,135 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from utils import (  # noqa: E402
+    chapter_manage_url,
     chapters_path,
     extract_word_count,
     list_chapter_files,
     load_config,
     load_published_log,
-    new_chapter_url,
     parse_chapter_file,
     save_published_log,
 )
 
 # 番茄章节编辑器选择器（若页面改版，可在此调整）
-SEL_TITLE = 'input.serial-editor-input-hint-area[placeholder="请输入标题"]'
+SEL_NUM = '.serial-editor-title-left .left-input input'  # “第 □ 章”里的序号框
+SEL_TITLE = 'input.serial-editor-input-hint-area[placeholder="请输入标题"]'  # 标题（副标题）框
 SEL_EDITOR = '.serial-editor-container .ProseMirror[contenteditable="true"]'
 SEL_SAVE_DRAFT = 'button.auto-editor-save-btn'
+SEL_PUBLISH_NEXT = 'button.auto-editor-next'  # 右上角真正的“下一步/发布”按钮
+SEL_GUIDE_BTN = 'button.guide-card-footer-btn'  # 新手引导弹窗按钮
+SEL_NEW_CHAPTER_BTN = 'button:has-text("新建章节")'  # 章节管理页“新建章节”按钮
 SEL_HEADER = '.publish-header'
 SEL_STATUS = '.publish-maintain-info-status'
 
+# 标题里的“第N章”前缀，用于拆分出纯副标题
+TITLE_PREFIX_RE = re.compile(r"^第[\d一二三四五六七八九十百零两]+章\s*")
+
+
+def split_title(title: str) -> str:
+    """从 '第十四章 加班夜' 拆出副标题 '加班夜'。无副标题时返回空串。"""
+    return TITLE_PREFIX_RE.sub("", title).strip()
+
 
 def dismiss_guides(page: Page) -> None:
-    for _ in range(3):
-        page.keyboard.press("Escape")
-        page.wait_for_timeout(200)
-
+    # 关闭新手引导（1/3 -> 2/3 -> 3/3 -> 完成），按钮固定 class
     for _ in range(8):
-        clicked = False
-        for text in ("下一步", "完成", "我知道了", "跳过"):
-            try:
-                for btn in page.get_by_text(text, exact=True).element_handles():
-                    box = btn.bounding_box()
-                    if box and box["y"] > 100:
-                        btn.click()
-                        page.wait_for_timeout(500)
-                        clicked = True
-            except Exception:
-                pass
-        if not clicked:
+        guide = page.locator(SEL_GUIDE_BTN)
+        if guide.count() == 0 or not guide.first.is_visible():
+            break
+        try:
+            guide.first.click()
+            page.wait_for_timeout(400)
+        except Exception:
             break
 
+    for _ in range(2):
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(150)
 
-def fill_title(page: Page, title: str) -> None:
-    loc = page.locator(SEL_TITLE).first
+    # 兜底：其它可能的关闭按钮
+    for text in ("我知道了", "跳过", "完成"):
+        try:
+            loc = page.get_by_text(text, exact=True)
+            for btn in loc.element_handles():
+                box = btn.bounding_box()
+                if box and box["y"] > 100:
+                    btn.click()
+                    page.wait_for_timeout(300)
+        except Exception:
+            pass
+
+
+def _fill_input(page: Page, selector: str, value: str) -> str:
+    loc = page.locator(selector).first
     loc.wait_for(state="visible", timeout=15000)
     loc.click()
     loc.fill("")
-    loc.fill(title)
-    page.wait_for_timeout(300)
+    loc.fill(value)
+    page.wait_for_timeout(200)
     # 触发 React 表单更新
     loc.press("End")
     loc.press(" ")
     loc.press("Backspace")
-    actual = loc.input_value()
-    if actual.strip() != title.strip():
-        raise RuntimeError(f"标题写入失败，当前值: {actual!r}")
+    page.wait_for_timeout(100)
+    return loc.input_value()
+
+
+def fill_title(page: Page, chapter_num: int, title: str) -> None:
+    """番茄标题区：序号框填阿拉伯数字（必填，需键盘输入），标题框填副标题。"""
+    subtitle = split_title(title)
+    if not subtitle:
+        raise RuntimeError(f"无法从标题中解析出副标题: {title!r}")
+
+    actual_sub = _fill_input(page, SEL_TITLE, subtitle)
+    if actual_sub.strip() != subtitle:
+        raise RuntimeError(f"标题写入失败，当前值: {actual_sub!r} (期望 {subtitle!r})")
+
+
+def fill_number(page: Page, chapter_num: int) -> None:
+    """序号框是字节 byte-input，fill() 无效，必须用键盘逐字输入。"""
+    num = str(chapter_num)
+    loc = page.locator(SEL_NUM).first
+    loc.wait_for(state="visible", timeout=15000)
+    for _ in range(3):
+        loc.click()
+        page.keyboard.press("Control+A")
+        page.keyboard.press("Delete")
+        page.wait_for_timeout(150)
+        page.keyboard.type(num, delay=40)
+        page.wait_for_timeout(250)
+        if loc.input_value().strip() == num:
+            return
+    raise RuntimeError(f"章节序号写入失败，当前值: {loc.input_value()!r}")
+
+
+def clear_editor(page: Page, editor) -> None:
+    """彻底清空正文编辑器（页面可能自动恢复上次草稿，必须清干净再写）。"""
+    for _ in range(5):
+        editor.click()
+        page.wait_for_timeout(150)
+        page.keyboard.press("Control+A")
+        page.keyboard.press("Delete")
+        page.wait_for_timeout(200)
+        remaining = editor.evaluate("el => (el.innerText || '').trim()")
+        if len(remaining) == 0:
+            return
+    # 兜底：直接清空 DOM
+    try:
+        editor.evaluate("el => { el.innerHTML = '<p><br></p>'; }")
+    except Exception:
+        pass
 
 
 def fill_body(page: Page, text: str) -> None:
     editor = page.locator(SEL_EDITOR).first
     editor.wait_for(state="visible", timeout=15000)
-    editor.click()
-    page.wait_for_timeout(300)
 
-    page.keyboard.press("Control+A")
-    page.keyboard.press("Backspace")
-    page.wait_for_timeout(200)
+    clear_editor(page, editor)
 
     # 优先剪贴板粘贴（快）
     try:
+        editor.click()
         page.evaluate("async (v) => await navigator.clipboard.writeText(v)", text)
         page.keyboard.press("Control+V")
         page.wait_for_timeout(1500)
@@ -124,15 +186,19 @@ def fill_body(page: Page, text: str) -> None:
 
 
 def wait_word_count(page: Page, min_words: int, timeout_sec: int) -> int:
-    header = page.locator(SEL_HEADER)
+    """以编辑器实际正文长度为准（顶栏“正文字数”偶发不渲染，不能依赖它）。"""
+    editor = page.locator(SEL_EDITOR).first
     start = time.time()
+    last = 0
     while time.time() - start < timeout_sec:
-        header_text = header.inner_text(timeout=2000) if header.count() else ""
-        count = extract_word_count(header_text)
-        if count is not None and count >= min_words:
-            return count
+        try:
+            last = len(editor.evaluate("el => (el.innerText || '').trim()"))
+        except Exception:
+            last = 0
+        if last >= min_words:
+            return last
         page.wait_for_timeout(500)
-    raise RuntimeError("等待正文字数同步超时")
+    raise RuntimeError(f"等待正文同步超时（当前编辑器字数 {last}）")
 
 
 def click_save_draft(page: Page) -> None:
@@ -156,85 +222,176 @@ def wait_saved(page: Page, timeout_sec: int) -> None:
     raise RuntimeError("等待保存成功超时")
 
 
-def try_publish(page: Page) -> None:
-    """点击发布流程：下一步 -> 处理弹窗 -> 确认发布"""
-
-    # 是否使用 AI：选「否」（部分账号有该选项）
+def check_validation_errors(page: Page) -> None:
+    """点击下一步后若出现红色校验横幅，抛出明确错误。"""
     try:
-        ai_no = page.get_by_text("否", exact=True).first
-        if ai_no.is_visible(timeout=1500):
-            ai_no.click()
-            page.wait_for_timeout(400)
-    except Exception:
+        banner = page.locator("text=/章节序号只支持|正文至少输入|请输入标题|标题不能/").first
+        if banner.count() and banner.is_visible(timeout=500):
+            raise RuntimeError(f"发布校验未通过: {banner.inner_text().strip()}")
+    except PlaywrightTimeout:
         pass
 
-    candidates = [
-        page.get_by_role("button", name=re.compile(r"下一步|发布")),
-        page.locator('button:has-text("下一步"), button:has-text("发布")'),
-    ]
-    entry = None
-    for loc in candidates:
-        if loc.count() > 0 and loc.first.is_visible():
-            entry = loc.first
-            break
-    if entry is None:
-        raise RuntimeError("未找到「下一步」或「发布」按钮")
 
+def try_publish(page: Page, debug_shot: Path | None = None) -> None:
+    """点击发布流程：右上角「下一步」-> 处理弹窗 -> 确认发布，并校验成功。"""
+
+    entry = page.locator(SEL_PUBLISH_NEXT).first
+    entry.wait_for(state="visible", timeout=10000)
     if entry.is_disabled():
-        raise RuntimeError("发布按钮当前不可用")
+        raise RuntimeError("发布按钮（下一步）当前不可用，可能标题/正文未通过校验")
 
     entry.click()
-    page.wait_for_timeout(1500)
+    page.wait_for_timeout(2000)
 
-    confirm = page.get_by_role("button", name=re.compile(r"确认发布|确定")).first
-    try:
-        if confirm.is_visible(timeout=5000):
-            confirm.click()
+    check_validation_errors(page)
+
+    if debug_shot is not None:
+        try:
+            page.screenshot(path=str(debug_shot))
+        except Exception:
+            pass
+
+    # 发布依次弹出：错别字提示(提交) -> 内容检测方式(仅基础检测) -> 发布设置(选否+确认发布)。
+    # 「仅基础检测」优先以免消耗「全面检测」次数。
+    confirm_patterns = [
+        re.compile(r"^仅基础检测$"),
+        re.compile(r"^提交$"),
+        re.compile(r"确认发布|立即发布|^确认$|^确定$|^发布$"),
+    ]
+    for _ in range(6):
+        # 「发布设置」里「是否使用AI」必选，选「否」
+        try:
+            if page.get_by_text("是否使用AI", exact=False).first.is_visible(timeout=500):
+                page.get_by_text("否", exact=True).first.click()
+                page.wait_for_timeout(300)
+        except Exception:
+            pass
+
+        clicked = False
+        for pat in confirm_patterns:
+            btn = page.get_by_role("button", name=pat).first
+            try:
+                if not (btn.count() and btn.is_visible(timeout=2000)):
+                    continue
+            except PlaywrightTimeout:
+                continue
+            for _ in range(10):
+                if not btn.is_disabled():
+                    break
+                page.wait_for_timeout(500)
+            btn.click()
             page.wait_for_timeout(2500)
-    except PlaywrightTimeout:
-        # 有的流程没有二次确认
+            clicked = True
+            break
+        if not clicked:
+            break
+
+    if debug_shot is not None:
+        try:
+            after = debug_shot.with_name(debug_shot.stem + "_after.png")
+            page.screenshot(path=str(after))
+            print(f"  [debug] after-confirm url={page.url}")
+        except Exception:
+            pass
+
+    verify_published(page, 15)
+
+
+def verify_published(page: Page, timeout_sec: int) -> None:
+    """校验发布是否真正成功：成功提示 toast / 跳转 / 已提交状态。"""
+    start = time.time()
+    while time.time() - start < timeout_sec:
+        # 成功提示（arco message / toast）
+        try:
+            body_text = page.locator("body").inner_text(timeout=1000)
+        except Exception:
+            body_text = ""
+        if re.search(r"发布成功|提交成功|审核中|已发布", body_text):
+            return
+        # 已离开编辑页（跳回章节管理）也视为成功
+        if "enter_from=newchapter" not in page.url and "/publish/" not in page.url:
+            return
+        page.wait_for_timeout(500)
+    raise RuntimeError("未检测到发布成功提示，可能发布未完成")
+
+
+def open_new_chapter_editor(context, manage_page: Page, cfg: dict) -> Page:
+    """通过“章节管理页 -> 新建章节”按钮创建一个全新章节，返回编辑器页面。
+
+    关键：每次都点“新建章节”生成新的章节ID，避免反复覆盖同一章。
+    """
+    manage_page.goto(chapter_manage_url(cfg), wait_until="domcontentloaded", timeout=60000)
+    manage_page.wait_for_timeout(2500)
+    dismiss_guides(manage_page)
+
+    btn = manage_page.locator(SEL_NEW_CHAPTER_BTN).first
+    btn.wait_for(state="visible", timeout=20000)
+
+    before = list(context.pages)
+    btn.click()
+    manage_page.wait_for_timeout(3000)
+
+    new_pages = [p for p in context.pages if p not in before]
+    editor = new_pages[-1] if new_pages else manage_page
+    try:
+        editor.wait_for_load_state("domcontentloaded", timeout=20000)
+    except Exception:
         pass
+    editor.wait_for_timeout(2000)
+    dismiss_guides(editor)
+
+    if "enter_from=newchapter" not in editor.url:
+        raise RuntimeError(f"未进入新建章节编辑器，当前URL: {editor.url}")
+    return editor
 
 
 def publish_one_chapter(
-    page: Page,
+    context,
+    manage_page: Page,
     cfg: dict,
     chapter_num: int,
     title: str,
     body: str,
     mode: str,
 ) -> None:
-    url = new_chapter_url(cfg)
-    print(f"  -> 打开编辑器: {url}")
-    page.goto(url, wait_until="domcontentloaded", timeout=60000)
-    page.wait_for_timeout(2000)
+    editor = open_new_chapter_editor(context, manage_page, cfg)
+    print(f"  -> 新建章节编辑器: {editor.url}")
+    try:
+        editor.locator(SEL_TITLE).first.wait_for(state="visible", timeout=15000)
+        editor.locator(SEL_EDITOR).first.wait_for(state="visible", timeout=15000)
 
-    dismiss_guides(page)
+        print(f"  -> 填写标题: 第{chapter_num}章 {split_title(title)}")
+        fill_title(editor, chapter_num, title)
 
-    page.locator(SEL_TITLE).first.wait_for(state="visible", timeout=15000)
-    page.locator(SEL_EDITOR).first.wait_for(state="visible", timeout=15000)
+        print(f"  -> 填写正文 ({len(body)} 字)...")
+        fill_body(editor, body)
 
-    print(f"  -> 填写标题: {title}")
-    fill_title(page, title)
+        print(f"  -> 填写章节序号: {chapter_num}")
+        fill_number(editor, chapter_num)
 
-    print(f"  -> 填写正文 ({len(body)} 字)...")
-    fill_body(page, body)
+        min_words = max(20, min(100, len(body) // 2))
+        count = wait_word_count(editor, min_words, cfg.get("word_count_timeout", 20))
+        print(f"  -> 编辑器字数: {count}")
 
-    min_words = max(20, min(100, len(body) // 2))
-    count = wait_word_count(page, min_words, cfg.get("word_count_timeout", 20))
-    print(f"  -> 编辑器字数: {count}")
-
-    if mode == "draft":
-        print("  -> 存草稿...")
-        click_save_draft(page)
-        print("  -> ✅ 草稿已保存")
-    elif mode == "publish":
-        print("  -> 尝试正式发布...")
-        try_publish(page)
-        page.wait_for_timeout(2000)
-        print("  -> ✅ 已执行发布流程（请在后台核对章节状态）")
-    else:
-        raise ValueError(f"未知模式: {mode}")
+        if mode == "draft":
+            print("  -> 存草稿...")
+            click_save_draft(editor)
+            print("  -> ✅ 草稿已保存")
+        elif mode == "publish":
+            print("  -> 尝试正式发布...")
+            debug_shot = ROOT / "scripts" / "fanqie_publish" / "_last_publish.png"
+            try_publish(editor, debug_shot=debug_shot)
+            editor.wait_for_timeout(2000)
+            print("  -> ✅ 已执行发布流程（请在后台核对章节状态）")
+        else:
+            raise ValueError(f"未知模式: {mode}")
+    finally:
+        # 编辑器若是新标签页，发布后关闭，避免标签堆积
+        if editor is not manage_page:
+            try:
+                editor.close()
+            except Exception:
+                pass
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -273,7 +430,8 @@ def main() -> None:
         chapters.append((num, title, body, f))
     chapters.sort(key=lambda x: x[0])
 
-    published = load_published_log(cfg) if args.resume else set()
+    # 始终加载已发布记录（用于合并保存，避免覆盖丢失）；--resume 时还用于过滤
+    published = load_published_log(cfg)
 
     selected = [c for c in chapters if c[0] >= args.start]
     if args.end and args.end > 0:
@@ -309,20 +467,28 @@ def main() -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=not args.no_headless)
         context = browser.new_context(storage_state=str(state_path))
-        page = context.new_page()
+        manage_page = context.new_page()
 
+        consec_fail = 0
+        stop_threshold = int(cfg.get("stop_after_consecutive_failures", 3))
         for i, (num, title, body, path) in enumerate(selected, 1):
             print(f"\n[{i}/{len(selected)}] 第{num}章 {title}")
             try:
-                publish_one_chapter(page, cfg, num, title, body, mode)
+                publish_one_chapter(context, manage_page, cfg, num, title, body, mode)
                 success.append(num)
                 published.add(num)
                 save_published_log(cfg, published)
+                consec_fail = 0
             except Exception as e:
                 print(f"  ❌ 失败: {e}")
-                ans = input("  按回车跳过本章继续，或输入 q 退出: ").strip().lower()
-                if ans == "q":
+                consec_fail += 1
+                if consec_fail >= stop_threshold:
+                    print(
+                        f"\n⚠️ 连续 {consec_fail} 章发布失败，疑似触发番茄发布上限/限流，已自动停止。"
+                    )
+                    print("   建议隔几小时或次日再运行（加 --resume 续发未完成章节）。")
                     break
+                print("  （已跳过本章，继续下一章）")
             if i < len(selected):
                 print(f"  ... 等待 {delay} 秒")
                 time.sleep(delay)

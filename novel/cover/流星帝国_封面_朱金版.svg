@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="900" height="1200" viewBox="0 0 900 1200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="redbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#7d1411"/>
+      <stop offset="45%" stop-color="#a51f17"/>
+      <stop offset="100%" stop-color="#5e0f0c"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"  stop-color="#ffe9ac"/>
+      <stop offset="58%" stop-color="#e6b451"/>
+      <stop offset="100%" stop-color="#b9852f"/>
+    </radialGradient>
+    <radialGradient id="sunglow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"  stop-color="#ffdf8e" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ffdf8e" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="goldtext" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#fff3c8"/>
+      <stop offset="50%" stop-color="#f1cd72"/>
+      <stop offset="100%" stop-color="#c8922f"/>
+    </linearGradient>
+    <linearGradient id="meteor2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffe9ac" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#fff7e0" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="900" height="1200" fill="url(#redbg)"/>
+
+  <g stroke="#e3b25a" stroke-width="3" fill="none" opacity="0.28" stroke-linecap="round">
+    <path d="M70 130 q40 -36 80 0 q40 -30 70 6 q-20 40 -70 22 q-40 24 -80 -6 q-26 -22 0 -22 Z"/>
+    <path d="M760 1050 q40 -36 80 0 q40 -30 70 6 q-20 40 -70 22 q-40 24 -80 -6 q-26 -22 0 -22 Z"/>
+    <path d="M120 1040 q30 -26 60 0 q30 -22 52 4 q-14 30 -52 16 q-30 18 -60 -4 q-20 -16 0 -16 Z"/>
+  </g>
+
+  <circle cx="450" cy="360" r="260" fill="url(#sunglow)"/>
+  <circle cx="450" cy="360" r="190" fill="url(#sun)" opacity="0.92"/>
+
+  <g transform="rotate(-24 600 230)">
+    <rect x="330" y="227" width="320" height="5" rx="2.5" fill="url(#meteor2)"/>
+    <circle cx="650" cy="229" r="6" fill="#fff7e0"/>
+  </g>
+
+  <path d="M0 900 L150 820 L300 880 L450 800 L600 875 L760 805 L900 870 L900 1200 L0 1200 Z"
+        fill="#5a0d0a" opacity="0.9"/>
+  <g fill="#3c0807" transform="translate(360 815)">
+    <rect x="0" y="110" width="180" height="100"/>
+    <rect x="30" y="55" width="120" height="60"/>
+    <path d="M8 55 Q90 12 172 55 L150 59 Q90 28 30 59 Z"/>
+    <path d="M-4 59 L184 59 L156 40 Q90 14 24 40 Z"/>
+    <path d="M40 22 Q90 0 140 22 L124 26 Q90 10 56 26 Z"/>
+  </g>
+  <path d="M0 1010 L220 940 L460 1000 L700 935 L900 1000 L900 1200 L0 1200 Z"
+        fill="#2c0605"/>
+
+  <g font-family="'STKaiti','KaiTi','SimSun','Songti SC',serif" text-anchor="middle">
+    <text x="450" y="290" font-size="148" font-weight="700" fill="url(#goldtext)" stroke="#5e0f0c" stroke-width="2">A</text>
+    <text x="450" y="438" font-size="148" font-weight="700" fill="url(#goldtext)" stroke="#5e0f0c" stroke-width="2"></text>
+    <text x="450" y="586" font-size="148" font-weight="700" fill="url(#goldtext)" stroke="#5e0f0c" stroke-width="2"></text>
+    <text x="450" y="734" font-size="148" font-weight="700" fill="url(#goldtext)" stroke="#5e0f0c" stroke-width="2">ý</text>
+  </g>
+
+  <g text-anchor="middle" font-family="'STSong','SimSun','Songti SC',serif">
+    <rect x="270" y="788" width="360" height="2" fill="#e9c87a" opacity="0.8"/>
+    <text x="450" y="835" font-size="40" fill="#f3dca4" letter-spacing="10">'‹t¡	At</text>
+    <rect x="270" y="858" width="360" height="2" fill="#e9c87a" opacity="0.8"/>
+  </g>
+
+  <g text-anchor="middle" font-family="'STKaiti','KaiTi',serif">
+    <rect x="406" y="1062" width="88" height="88" rx="6" fill="#c0392b" stroke="#f3dca4" stroke-width="2"/>
+    <text x="450" y="1098" font-size="32" fill="#fff3d6">t¡</text>
+    <text x="450" y="1133" font-size="32" fill="#fff3d6">U</text>
+  </g>
+</svg>

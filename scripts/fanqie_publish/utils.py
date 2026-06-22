@@ -33,6 +33,16 @@ def new_chapter_url(cfg: dict[str, Any]) -> str:
     )
 
 
+def chapter_manage_url(cfg: dict[str, Any], type_: int = 1) -> str:
+    """章节管理页。type=1 已发布章节列表；type=2 草稿箱。"""
+    from urllib.parse import quote
+
+    return (
+        f"https://fanqienovel.com/main/writer/chapter-manage/"
+        f"{cfg['writer_id']}&{quote(cfg['book_name'])}?type={type_}"
+    )
+
+
 def chapters_path(cfg: dict[str, Any]) -> Path:
     return ROOT / cfg["chapters_dir"]
 

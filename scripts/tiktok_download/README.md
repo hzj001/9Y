@@ -95,6 +95,100 @@ python fetch_recent.py "https://www.tiktok.com/@user" --years 2 -o recent_2y.jso
 
 > 提示：从主页最新视频往旧扫描，连续遇到超出时间窗口的旧视频即停止，因此速度较快。`datetime` 为本地时区时间。
 
+## HTTP 服务：`server.py`
+
+提供一个 HTTP 接口，POST 主页链接 + 天数 + 类型（下载 / 获取地址），返回结果。基于标准库，无需额外依赖。
+
+启动服务：
+
+```bash
+python server.py                       # 默认 127.0.0.1:8000
+python server.py --host 0.0.0.0 --port 9000
+```
+
+调用接口 `POST /api/tiktok`（JSON 请求体）：
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `url` | 是 | TikTok 用户主页链接 |
+| `days` | 否 | 时间窗口天数，默认 2 |
+| `years` | 否 | 时间窗口年数，设置后覆盖 `days` |
+| `type` | 否 | `fetch`（默认，只返回地址）/ `download`（下载到本地） |
+| `max` | 否 | 处理数量上限 |
+| `from_browser` | 否 | 复用浏览器登录态：firefox/chrome/edge... |
+| `cookies` | 否 | cookies.txt 路径 |
+
+示例（获取近两天视频地址）：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/tiktok \
+     -H "Content-Type: application/json" \
+     -d "{\"url\":\"https://www.tiktok.com/@win.william_official\",\"days\":2,\"type\":\"fetch\"}"
+```
+
+示例（下载近两天视频）：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/tiktok \
+     -H "Content-Type: application/json" \
+     -d "{\"url\":\"https://www.tiktok.com/@win.william_official\",\"days\":2,\"type\":\"download\"}"
+```
+
+返回示例（fetch）：
+
+```json
+{
+  "type": "fetch",
+  "count": 1,
+  "videos": [
+    { "id": "7300000000000000000", "url": "https://www.tiktok.com/@.../video/7300000000000000000", "timestamp": 1718900000, "datetime": "2026-06-20 10:13:20" }
+  ]
+}
+```
+
+> 注意：`type=download` 是同步下载，时间窗口大时请求会阻塞较久；建议先用 `fetch` 看清单，再决定是否下载。
+
+## Docker 部署
+
+镜像已包含 Python、yt-dlp、curl_cffi、ffmpeg，开箱即用。
+
+> ⚠️ 容器所在服务器必须能访问 TikTok（国内节点不行，需海外服务器或代理）。
+
+使用 docker compose（推荐）：
+
+```bash
+cd scripts/tiktok_download
+docker compose up -d --build      # 构建并后台启动
+docker compose logs -f            # 查看日志
+docker compose down               # 停止
+```
+
+或直接用 docker：
+
+```bash
+cd scripts/tiktok_download
+docker build -t tiktok-fetcher .
+docker run -d --name tiktok-fetcher \
+  -p 8000:8000 \
+  -v "$(pwd)/downloads:/app/downloads" \
+  tiktok-fetcher
+```
+
+启动后即可调用接口：
+
+```bash
+curl -X POST http://localhost:8000/api/tiktok \
+     -H "Content-Type: application/json" \
+     -d "{\"url\":\"https://www.tiktok.com/@win.william_official\",\"days\":2,\"type\":\"fetch\"}"
+```
+
+说明：
+
+- 下载产物持久化在宿主机 `./downloads` 目录。
+- 监听地址/端口可用环境变量 `HOST`、`PORT` 调整（compose 里已设置）。
+- 需要登录时：把 `cookies.txt` 放到 `scripts/tiktok_download/`，取消 `docker-compose.yml` 中 cookies 挂载那行注释，请求时传 `"cookies": "/app/cookies.txt"`。
+- 容器内无浏览器，`from_browser` 不可用，登录请用 cookies。
+
 ## 说明
 
 - 文件按 `下载者/创建时间_视频ID.mp4`（如 `20240115_103045_7300000000000000000.mp4`）组织，避免重名覆盖。

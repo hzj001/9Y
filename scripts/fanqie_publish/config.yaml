@@ -1,9 +1,12 @@
 # 番茄小说自动发布配置
 # 请根据你的作家后台链接修改下方 book_id
 
-# 作家作品发布页（新建章节）
-# 格式: https://fanqienovel.com/main/writer/{writer_id}/publish/{book_id}?enter_from=newchapter
+# 作家信息
+# 注意：发布时通过“章节管理页 -> 新建章节”按钮创建全新章节，
+#      不要再用固定的 /publish/{id} 链接（那个 id 其实是某一章的章节ID，会反复覆盖同一章）。
 writer_id: "7650920070733892670"
+book_name: "雨夜来电情欲张力版"
+# 旧的固定章节链接 id（已废弃，仅留存参考）
 book_id: "7651092222896505406"
 
 # 章节 Markdown 目录（相对本仓库根目录）
